@@ -1,0 +1,120 @@
+name: verify
+
+# The test VM for /oss-hunt. Proves a finding: the new test must FAIL on
+# upstream without the fix, and PASS once the fix is applied.
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Upstream GitHub repo, e.g. apache/kafka"
+        required: true
+      upstream_ref:
+        description: "Upstream commit SHA the patches are based on"
+        required: true
+      finding_dir:
+        description: "Folder in this repo holding test.patch and fix.patch"
+        required: true
+      test_cmd:
+        description: "Narrowest command that runs the new test, run from the upstream root"
+        required: true
+      module_test_cmd:
+        description: "Optional wider command for the module's existing tests"
+        required: false
+        default: ""
+      java_version:
+        description: "JDK version for the upstream build"
+        required: false
+        default: "21"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PROJECT: ${{ inputs.project }}
+      FINDING_DIR: ${{ inputs.finding_dir }}
+      TEST_CMD: ${{ inputs.test_cmd }}
+      MODULE_TEST_CMD: ${{ inputs.module_test_cmd }}
+    steps:
+      - name: Check out the hunt repo
+        uses: actions/checkout@v4
+        with:
+          path: hunt
+
+      - name: Check out upstream at the audited commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.project }}
+          ref: ${{ inputs.upstream_ref }}
+          path: upstream
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java_version }}
+
+      - name: Cache build dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.m2/repository
+          key: deps-${{ inputs.project }}-${{ hashFiles('upstream/**/*.gradle*', 'upstream/**/pom.xml', 'upstream/build.xml') }}
+          restore-keys: deps-${{ inputs.project }}-
+
+      - name: Apply the test only
+        working-directory: upstream
+        run: git apply --whitespace=nowarn "../hunt/$FINDING_DIR/test.patch"
+
+      - name: Proof 1 - test must fail WITHOUT the fix
+        working-directory: upstream
+        shell: bash
+        run: |
+          set +e
+          bash -c "$TEST_CMD" 2>&1 | tee ../without-fix.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::NOT PROVEN - the test passed without the fix"
+            exit 1
+          fi
+          if grep -Eq "COMPILATION ERROR|Compilation failed|compileTestJava FAILED|compileJava FAILED|error: cannot find symbol" ../without-fix.log; then
+            echo "::error::NOT PROVEN - the test does not compile against upstream; rewrite it to compile without the fix"
+            exit 1
+          fi
+          echo "PROOF 1 OK - test fails on upstream without the fix"
+
+      - name: Apply the fix
+        working-directory: upstream
+        run: git apply --whitespace=nowarn "../hunt/$FINDING_DIR/fix.patch"
+
+      - name: Proof 2 - test must pass WITH the fix
+        working-directory: upstream
+        shell: bash
+        run: |
+          bash -c "$TEST_CMD"
+          echo "PROOF 2 OK - test passes with the fix"
+
+      - name: Proof 3 - module tests still pass
+        if: ${{ inputs.module_test_cmd != '' }}
+        working-directory: upstream
+        shell: bash
+        run: |
+          bash -c "$MODULE_TEST_CMD"
+          echo "PROOF 3 OK - module tests pass with the fix"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-logs
+          path: without-fix.log
+          if-no-files-found: ignore
