@@ -1,0 +1,47 @@
+diff --git a/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java b/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java
+index 4cb19cb..be26d69 100644
+--- a/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java
++++ b/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java
+@@ -182,8 +182,21 @@ public abstract class HttpContentDecoder extends MessageToMessageDecoder<HttpObj
+                     EmbeddedChannel finishedDecoder = decoder;
+                     // Don't keep the decoder if finish() throws, it is closed afterwards and can't be used again.
+                     decoder = null;
+-                    boolean notEmpty = finishedDecoder.finish();
+-                    assert !notEmpty;
++                    DecompressionException truncated = null;
++                    try {
++                        boolean notEmpty = finishedDecoder.finish();
++                        assert !notEmpty;
++                    } catch (DecompressionException e) {
++                        if (!ctx.channel().isActive()) {
++                            // The body was delimited by the end of the connection, so it is not complete:
++                            // do not pass on the end of the message.
++                            throw e;
++                        }
++                        // The message itself was complete (chunked or Content-Length), only its compressed
++                        // body was truncated. Pass on the end of the message with the failure, so that the
++                        // next handlers do not treat the next message on the connection as part of this one.
++                        truncated = e;
++                    }
+                     LastHttpContent last = (LastHttpContent) c;
+                     // Generate an additional chunk if the decoder produced
+                     // the last product on closure,
+@@ -191,12 +204,18 @@ public abstract class HttpContentDecoder extends MessageToMessageDecoder<HttpObj
+                     // Keep the decoder result, so that a failure of the last content (for example a malformed
+                     // chunk) still reaches the next handlers.
+                     DecoderResult lastDecoderResult = last.decoderResult();
++                    if (truncated != null && lastDecoderResult.isSuccess()) {
++                        lastDecoderResult = DecoderResult.failure(truncated);
++                    }
+                     needRead = false;
+                     if (headers.isEmpty() && lastDecoderResult.isSuccess()) {
+                         ctx.fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+                     } else {
+                         ctx.fireChannelRead(new ComposedLastHttpContent(headers, lastDecoderResult));
+                     }
++                    if (truncated != null) {
++                        throw truncated;
++                    }
+                 }
+             }
+         }

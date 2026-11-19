@@ -1,0 +1,44 @@
+diff --git a/codec-http/src/test/java/io/netty/handler/codec/http/HttpContentDecoderTest.java b/codec-http/src/test/java/io/netty/handler/codec/http/HttpContentDecoderTest.java
+index b4ec875..d263e5f 100644
+--- a/codec-http/src/test/java/io/netty/handler/codec/http/HttpContentDecoderTest.java
++++ b/codec-http/src/test/java/io/netty/handler/codec/http/HttpContentDecoderTest.java
+@@ -992,6 +992,39 @@ public class HttpContentDecoderTest {
+         return output;
+     }
+ 
++    @Test
++    public void testTruncatedGzipChunkedResponseDoesNotBreakNextResponse() {
++        EmbeddedChannel channel = new EmbeddedChannel(
++                new HttpResponseDecoder(), new HttpContentDecompressor(0), new HttpObjectAggregator(1024));
++        // Chunked gzip body without the CRC32/ISIZE footer, but correctly framed by the last chunk.
++        int truncatedLen = GZ_HELLO_WORLD.length - 8;
++        ByteBuf first = Unpooled.buffer();
++        first.writeCharSequence("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Encoding: gzip\r\n\r\n" +
++                Integer.toHexString(truncatedLen) + "\r\n", CharsetUtil.US_ASCII);
++        first.writeBytes(GZ_HELLO_WORLD, 0, truncatedLen);
++        first.writeCharSequence("\r\n0\r\n\r\n", CharsetUtil.US_ASCII);
++        try {
++            channel.writeInbound(first);
++        } catch (DecoderException expected) {
++            // a failure of the first response may be reported
++        }
++        for (;;) {
++            Object o = channel.readInbound();
++            if (o == null) {
++                break;
++            }
++            ReferenceCountUtil.release(o);
++        }
++        // A second, valid response on the same keep-alive connection must not be affected.
++        channel.writeInbound(Unpooled.copiedBuffer(
++                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", CharsetUtil.US_ASCII));
++        FullHttpResponse second = channel.readInbound();
++        assertNotNull(second);
++        assertEquals("hi", second.content().toString(CharsetUtil.US_ASCII));
++        second.release();
++        assertFalse(channel.finish());
++    }
++
+     private static void assertHasInboundMessages(EmbeddedChannel channel, boolean hasMessages) {
+         Object o;
+         if (hasMessages) {
