@@ -1,0 +1,35 @@
+diff --git a/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java b/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java
+index 4cb19cb..854965a 100644
+--- a/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java
++++ b/codec-http/src/main/java/io/netty/handler/codec/http/HttpContentDecoder.java
+@@ -182,15 +182,25 @@ public abstract class HttpContentDecoder extends MessageToMessageDecoder<HttpObj
+                     EmbeddedChannel finishedDecoder = decoder;
+                     // Don't keep the decoder if finish() throws, it is closed afterwards and can't be used again.
+                     decoder = null;
+-                    boolean notEmpty = finishedDecoder.finish();
+-                    assert !notEmpty;
+                     LastHttpContent last = (LastHttpContent) c;
+-                    // Generate an additional chunk if the decoder produced
+-                    // the last product on closure,
+-                    HttpHeaders headers = last.trailingHeaders();
+                     // Keep the decoder result, so that a failure of the last content (for example a malformed
+                     // chunk) still reaches the next handlers.
+                     DecoderResult lastDecoderResult = last.decoderResult();
++                    try {
++                        boolean notEmpty = finishedDecoder.finish();
++                        assert !notEmpty;
++                    } catch (DecompressionException e) {
++                        // The compressed body was truncated. Do not swallow the end of the message, otherwise the
++                        // handlers after this one would never see the LastHttpContent and would treat the next
++                        // message on the connection as part of this one. Report the failure via the DecoderResult
++                        // unless the last content has failed already.
++                        if (lastDecoderResult.isSuccess()) {
++                            lastDecoderResult = DecoderResult.failure(e);
++                        }
++                    }
++                    // Generate an additional chunk if the decoder produced
++                    // the last product on closure,
++                    HttpHeaders headers = last.trailingHeaders();
+                     needRead = false;
+                     if (headers.isEmpty() && lastDecoderResult.isSuccess()) {
+                         ctx.fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
