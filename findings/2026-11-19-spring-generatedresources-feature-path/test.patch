@@ -1,0 +1,17 @@
+diff --git a/spring-core/src/test/java/org/springframework/aot/generate/GeneratedResourcesTests.java b/spring-core/src/test/java/org/springframework/aot/generate/GeneratedResourcesTests.java
+index 6ac98a01..566a2f25 100644
+--- a/spring-core/src/test/java/org/springframework/aot/generate/GeneratedResourcesTests.java
++++ b/spring-core/src/test/java/org/springframework/aot/generate/GeneratedResourcesTests.java
+@@ -132,6 +132,12 @@ class GeneratedResourcesTests {
+ 		assertThat(generatedClass1).isNotNull().isSameAs(generatedClass2).isSameAs(generatedClass3);
+ 	}
+ 
++	@Test
++	void getOrAddWithPathOfFeatureResourceReturnsSameInstance() {
++		GeneratedResource featureResource = this.generatedResources.addForFeature("json", "metadata");
++		assertThat(this.generatedResources.getOrAdd(featureResource.getPath())).isSameAs(featureResource);
++	}
++
+ 	@Test
+ 	void addForFeatureWithSameNameReturnsDifferentInstances() {
+ 		GeneratedResource generatedResource1 = this.generatedResources

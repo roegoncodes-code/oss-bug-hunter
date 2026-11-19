@@ -1,0 +1,12 @@
+diff --git a/spring-core/src/main/java/org/springframework/aot/generate/GeneratedResources.java b/spring-core/src/main/java/org/springframework/aot/generate/GeneratedResources.java
+index 1f9e1513..af10b409 100644
+--- a/spring-core/src/main/java/org/springframework/aot/generate/GeneratedResources.java
++++ b/spring-core/src/main/java/org/springframework/aot/generate/GeneratedResources.java
+@@ -170,6 +170,7 @@ public class GeneratedResources {
+ 		String path = this.nameGenerator.generateResourcePath(extension, featureName, targetComponent);
+ 		GeneratedResource generatedResource = new GeneratedResource(path);
+ 		this.resources.add(generatedResource);
++		this.resourcesByPath.putIfAbsent(path, generatedResource);
+ 		return generatedResource;
+ 	}
+ 
