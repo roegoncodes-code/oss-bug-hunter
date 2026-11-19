@@ -1,0 +1,35 @@
+diff --git a/spring-core/src/test/java/org/springframework/aot/generate/NameGeneratorTests.java b/spring-core/src/test/java/org/springframework/aot/generate/NameGeneratorTests.java
+index 513ee9c5..b88c8369 100644
+--- a/spring-core/src/test/java/org/springframework/aot/generate/NameGeneratorTests.java
++++ b/spring-core/src/test/java/org/springframework/aot/generate/NameGeneratorTests.java
+@@ -17,6 +17,7 @@
+ package org.springframework.aot.generate;
+ 
+ import java.io.InputStream;
++import java.util.List;
+ 
+ import org.junit.jupiter.api.Nested;
+ import org.junit.jupiter.api.Test;
+@@ -163,6 +164,22 @@ class NameGeneratorTests {
+ 			assertThat(generated3).hasToString("java/io/InputStream-bytes2.txt");
+ 		}
+ 
++		@Test
++		void generateResourcePathIsUniqueWhenFeatureNameEndsWithDigit() {
++			String generated1 = generator.generateResourcePath("json", "metadata", null);
++			String generated2 = generator.generateResourcePath("json", "metadata", null);
++			String generated3 = generator.generateResourcePath("json", "metadata1", null);
++			assertThat(List.of(generated1, generated2, generated3)).doesNotHaveDuplicates();
++		}
++
++		@Test
++		void generateResourcePathIsUniqueWhenFeatureNameEndingWithDigitIsRequestedFirst() {
++			String generated1 = generator.generateResourcePath("json", "metadata1", null);
++			String generated2 = generator.generateResourcePath("json", "metadata", null);
++			String generated3 = generator.generateResourcePath("json", "metadata", null);
++			assertThat(List.of(generated1, generated2, generated3)).doesNotHaveDuplicates();
++		}
++
+ 	}
+ 
+ }

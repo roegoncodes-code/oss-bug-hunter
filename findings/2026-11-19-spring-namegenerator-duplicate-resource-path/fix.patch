@@ -1,0 +1,28 @@
+diff --git a/spring-core/src/main/java/org/springframework/aot/generate/NameGenerator.java b/spring-core/src/main/java/org/springframework/aot/generate/NameGenerator.java
+index 024abfa4..ab178be0 100644
+--- a/spring-core/src/main/java/org/springframework/aot/generate/NameGenerator.java
++++ b/spring-core/src/main/java/org/springframework/aot/generate/NameGenerator.java
+@@ -179,12 +179,18 @@ public final class NameGenerator {
+ 	}
+ 
+ 	private <T> T generateUniqueName(String name, Function<String, T> factory) {
+-		int sequence = this.sequenceGenerator.computeIfAbsent(name, key ->
+-				new AtomicInteger()).getAndIncrement();
+-		if (sequence > 0) {
+-			name = name + sequence;
++		AtomicInteger counter = this.sequenceGenerator.computeIfAbsent(name, key -> new AtomicInteger());
++		int sequence = counter.getAndIncrement();
++		String uniqueName = name;
++		while (sequence > 0) {
++			uniqueName = name + sequence;
++			// Reserve the suffixed name so that it cannot clash with another root name
++			if (this.sequenceGenerator.putIfAbsent(uniqueName, new AtomicInteger(1)) == null) {
++				break;
++			}
++			sequence = counter.getAndIncrement();
+ 		}
+-		return factory.apply(name);
++		return factory.apply(uniqueName);
+ 	}
+ 
+ 	private static String toName(ClassName className) {
